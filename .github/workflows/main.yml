@@ -1,0 +1,47 @@
+name: Build PadronPY
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Descomprimir PadronPY.zip
+        run: unzip PadronPY.zip
+
+      - name: Dar permisos a gradlew
+        run: chmod +x PadronPY/gradlew
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('PadronPY/gradle/wrapper/gradle-wrapper.properties', 'PadronPY/app/build.gradle.kts') }}
+          restore-keys: |
+            gradle-
+
+      - name: Compilar APK Debug
+        working-directory: PadronPY
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PadronPY-debug
+          path: PadronPY/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
