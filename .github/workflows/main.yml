@@ -19,11 +19,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Descomprimir PadronPY.zip
-        run: unzip PadronPY.zip
-
       - name: Dar permisos a gradlew
-        run: chmod +x PadronPY/gradlew
+        run: chmod +x app_content/PadronPY/gradlew
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -31,17 +28,17 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('PadronPY/gradle/wrapper/gradle-wrapper.properties', 'PadronPY/app/build.gradle.kts') }}
+          key: gradle-${{ hashFiles('app_content/PadronPY/gradle/wrapper/gradle-wrapper.properties', 'app_content/PadronPY/app/build.gradle.kts') }}
           restore-keys: |
             gradle-
 
       - name: Compilar APK Debug
-        working-directory: PadronPY
+        working-directory: app_content/PadronPY
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
           name: PadronPY-debug
-          path: PadronPY/app/build/outputs/apk/debug/app-debug.apk
+          path: app_content/PadronPY/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
