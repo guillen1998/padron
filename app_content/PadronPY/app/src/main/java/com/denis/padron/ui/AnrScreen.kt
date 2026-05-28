@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalFocusManager
@@ -118,20 +119,20 @@ private fun AnrWebView(
 
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, pageUrl: String) {
-                            // Esperar 5s para que la SPA/WordPress monte completamente
+                            // Esperar 3s para que la SPA/WordPress monte
                             mainHandler.postDelayed({
                                 if (!resultHandled) {
                                     view.evaluateJavascript(buildAnrJs(cedula), null)
                                 }
-                            }, 5000L)
+                            }, 3000L)
 
-                            // Timeout de seguridad a los 35s
+                            // Timeout de seguridad a los 70s
                             mainHandler.postDelayed({
                                 if (!resultHandled) {
                                     resultHandled = true
                                     onNotFound("Tiempo agotado. Verificá tu conexión e intentá de nuevo.")
                                 }
-                            }, 35000L)
+                            }, 70000L)
                         }
 
                         override fun onReceivedError(
@@ -147,7 +148,8 @@ private fun AnrWebView(
                     loadUrl("https://www.anr.org.py/padron-2026/")
                 }
             },
-            modifier = Modifier.size(1.dp, 1.dp)
+            // 360x640 dp keeps mobile CSS layout active; alpha=0 hides it
+            modifier = Modifier.size(360.dp, 640.dp).alpha(0f)
         )
     }
 }
@@ -160,6 +162,14 @@ private fun buildAnrJs(cedula: String): String {
 (function(){
   'use strict';
   var CI = '$safeCI';
+  var DONE = false;
+  var SUBMITTED_AT = 0;
+
+  function done(payload) {
+    if (DONE) return;
+    DONE = true;
+    try { window.AndroidBridge.sendResult(JSON.stringify(payload)); } catch(e){}
+  }
 
   /* ── Set input value (React/Vue-compatible) ─────────────────── */
   function setNative(el, v) {
@@ -167,78 +177,16 @@ private fun buildAnrJs(cedula: String): String {
       var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
       if (d && d.set) d.set.call(el, v); else el.value = v;
     } catch(e) { el.value = v; }
-    ['focus','input','change','keyup','keydown'].forEach(function(n) {
-      el.dispatchEvent(new Event(n, {bubbles:true}));
+    ['focus','input','change','keyup','keydown','blur'].forEach(function(n) {
+      try { el.dispatchEvent(new Event(n, {bubbles:true})); } catch(e){}
     });
   }
 
-  /* ── Find the voter input (inside the form with Consultar btn) ─ */
-  function findVoterInput() {
-    var forms = Array.from(document.querySelectorAll('form'));
-    for (var fi = 0; fi < forms.length; fi++) {
-      var f = forms[fi];
-      var btns = Array.from(f.querySelectorAll('button,input[type=submit],input[type=button]'));
-      var hasConsultar = btns.some(function(b) {
-        return /consul|buscar|search/i.test(b.textContent || b.value || '');
-      });
-      if (!hasConsultar) continue;
-      var inp = Array.from(f.querySelectorAll('input')).filter(function(i) {
-        return i.type !== 'hidden' && i.type !== 'checkbox' && i.type !== 'radio' &&
-               i.type !== 'submit' && i.type !== 'button' && !i.disabled && i.offsetWidth > 0;
-      })[0];
-      if (inp) return inp;
-    }
-    // Fallback: first visible text-like input on page
-    return Array.from(document.querySelectorAll('input')).filter(function(i) {
-      return i.type !== 'hidden' && i.type !== 'checkbox' && i.type !== 'radio' &&
-             i.type !== 'submit' && i.type !== 'button' && !i.disabled && i.offsetWidth > 0;
-    })[0] || null;
-  }
-
-  function fillInput() {
-    var inp = findVoterInput();
-    if (inp) { setNative(inp, CI); return true; }
-    return false;
-  }
-
-  function clickSearch() {
-    // Click the Consultar button closest to our input
-    var inp = findVoterInput();
-    var scope = inp ? (inp.form || document.body) : document.body;
-    var btns = Array.from(scope.querySelectorAll('button,input[type=submit],input[type=button]'))
-      .filter(function(b) { return b.offsetWidth > 0 && !b.disabled; });
-    var btn = btns.find(function(b) { return /consul|buscar|search/i.test(b.textContent || b.value || ''); })
-              || btns[btns.length - 1];
-    if (btn) { btn.click(); return true; }
-    if (inp && inp.form) {
-      inp.form.dispatchEvent(new Event('submit', {bubbles:true, cancelable:true}));
-      return true;
-    }
-    return false;
-  }
-
-  /* ── Detect that real results are showing ───────────────────── */
-  // body.innerText does NOT include <input> values, so CI only appears there
-  // after the server result is rendered on the page.
-  function hasResultsLoaded() {
-    var txt = document.body.innerText || '';
-    return txt.indexOf(CI) !== -1;
-  }
-
-  function isNotFoundPage() {
-    var txt = (document.body.innerText || '').toLowerCase();
-    return ['no encontrado','no figura','no registr','no se encontr',
-            'sin resultados','not found','no esta','no aparece'].some(function(p) {
-      return txt.indexOf(p) !== -1;
-    });
-  }
-
-  /* ── Label helpers ──────────────────────────────────────────── */
-  var ACCENT_MAP = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ü':'u','ñ':'n',
-                    'Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ü':'U','Ñ':'N'};
-  function norm(s) {
-    return (s||'').trim().toUpperCase().replace(/[áéíóúüñÁÉÍÓÚÜÑ]/g,function(c){return ACCENT_MAP[c]||c;});
-  }
+  /* ── Normalización ──────────────────────────────────────────── */
+  var ACC = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ü':'u','ñ':'n',
+             'Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ü':'U','Ñ':'N'};
+  function norm(s){return (s||'').trim().toUpperCase().replace(/[áéíóúüñÁÉÍÓÚÜÑ]/g,function(c){return ACC[c]||c;});}
+  function normalLabel(raw){ return norm(raw).replace(/:${'$'}/, '').trim(); }
 
   var LABEL_SET = {
     'CEDULA DE IDENTIDAD':1,'NUMERO DE CEDULA':1,'NRO DE CEDULA':1,'NRO. DE CEDULA':1,
@@ -248,27 +196,111 @@ private fun buildAnrJs(cedula: String): String {
     'FECHA DE NACIMIENTO':1,'FECHA NACIMIENTO':1,'NACIMIENTO':1,
     'DEPARTAMENTO':1,'DEPTO':1,'DISTRITO':1,'CIUDAD':1,'BARRIO':1,
     'SECCIONAL':1,'SECCION':1,'LOCAL':1,'MESA':1,'ORDEN':1,
-    'FONO':1,'TELEFONO':1,'SEXO':1,'ESTADO':1
+    'FONO':1,'TELEFONO':1,'SEXO':1,'ESTADO':1,
+    'RESULTADO DE LA CONSULTA':1
   };
 
-  function normalLabel(raw) { return norm(raw).replace(/:${'$'}/, '').trim(); }
-  function isLabel(raw)      { return !!LABEL_SET[normalLabel(raw)]; }
+  /* ── Find consultar button by exact text (avoids icon-search) ─ */
+  function findConsultarButton() {
+    var btns = Array.from(document.querySelectorAll('button, input[type=submit], input[type=button], a'));
+    // First: exact-match "consultar"
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (b.disabled) continue;
+      var t = (b.textContent || b.value || '').trim().toLowerCase();
+      if (t === 'consultar') return b;
+    }
+    // Second: contains "consultar" anywhere
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (b.disabled) continue;
+      var t = (b.textContent || b.value || '').trim().toLowerCase();
+      if (/\bconsultar\b/.test(t) && !/aplicaci/i.test(t)) return b;
+    }
+    return null;
+  }
 
-  /* ── Extract from body.innerText line-by-line ───────────────── */
+  /* ── Find the cédula input within or near the form ──────────── */
+  function findCedulaInput(scope) {
+    var root = scope || document;
+    var inputs = Array.from(root.querySelectorAll('input'));
+    for (var i = 0; i < inputs.length; i++) {
+      var inp = inputs[i];
+      if (inp.type === 'hidden' || inp.type === 'checkbox' || inp.type === 'radio' ||
+          inp.type === 'submit' || inp.type === 'button' || inp.disabled) continue;
+      var name = (inp.name || '').toLowerCase();
+      var id   = (inp.id   || '').toLowerCase();
+      var ph   = (inp.placeholder || '').toLowerCase();
+      // Skip WordPress site search
+      if (name === 's' || id === 's' || /search/.test(name + id) || /buscar.*sitio/.test(ph)) continue;
+      return inp;
+    }
+    return null;
+  }
+
+  /* ── Submit using multiple strategies ───────────────────────── */
+  function trySubmit(input, button) {
+    var form = (button && (button.form || button.closest('form'))) ||
+               (input  && (input.form  || input.closest('form')));
+    // 1) button.click()
+    try { if (button) { button.click(); SUBMITTED_AT = Date.now(); return 'click'; } } catch(e){}
+    // 2) form.requestSubmit()
+    try { if (form && form.requestSubmit) { form.requestSubmit(); SUBMITTED_AT = Date.now(); return 'requestSubmit'; } } catch(e){}
+    // 3) form.submit()
+    try { if (form) { form.submit(); SUBMITTED_AT = Date.now(); return 'submit'; } } catch(e){}
+    // 4) Enter key on input
+    try {
+      if (input) {
+        ['keydown','keypress','keyup'].forEach(function(n){
+          input.dispatchEvent(new KeyboardEvent(n, {key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));
+        });
+        SUBMITTED_AT = Date.now();
+        return 'enter';
+      }
+    } catch(e){}
+    return null;
+  }
+
+  /* ── Detection: real results loaded ─────────────────────────── */
+  function hasResults() {
+    var txt = document.body.innerText || '';
+    if (txt.indexOf(CI) === -1) return false;
+    var nu = norm(txt);
+    // Must have a result marker AND the CI rendered as content (not input value)
+    return nu.indexOf('RESULTADO DE LA CONSULTA') !== -1 ||
+           nu.indexOf('CEDULA DE IDENTIDAD') !== -1;
+  }
+
+  function isNotFoundNow() {
+    // Only valid AFTER we submitted AND enough time passed
+    if (!SUBMITTED_AT || Date.now() - SUBMITTED_AT < 4000) return false;
+    var t = (document.body.innerText || '').toLowerCase();
+    return /no\s+se\s+encontr[oó]/.test(t) ||
+           /sin\s+resultados/.test(t) ||
+           /no\s+se\s+hall[oó]/.test(t) ||
+           /c[eé]dula\s+no\s+v[aá]lida/.test(t) ||
+           /no\s+est[aá]\s+inscript/.test(t) ||
+           /no\s+figura\s+en\s+el\s+padr/.test(t);
+  }
+
+  /* ── Extract label/value from rendered text ─────────────────── */
   function extractResults() {
     var lines = (document.body.innerText || '').split(/[\n\r]+/)
-      .map(function(l){ return l.trim(); })
-      .filter(function(l){ return l.length > 0 && l.length < 250; });
+      .map(function(l){return l.trim();})
+      .filter(function(l){return l.length > 0 && l.length < 250;});
 
     var found = [];
     var i = 0;
     while (i < lines.length) {
       var k = normalLabel(lines[i]);
+      // Skip header marker, not a real label
+      if (k === 'RESULTADO DE LA CONSULTA') { i++; continue; }
       if (LABEL_SET[k]) {
         var matched = false;
         for (var j = i + 1; j < Math.min(i + 4, lines.length); j++) {
           var v = lines[j].trim();
-          if (v.length > 0 && v.length < 200 && !LABEL_SET[normalLabel(v)]) {
+          var nv = normalLabel(v);
+          if (v.length > 0 && v.length < 200 && !LABEL_SET[nv]) {
             found.push([k, v]);
             i = j + 1;
             matched = true;
@@ -277,47 +309,81 @@ private fun buildAnrJs(cedula: String): String {
         }
         if (!matched) i++;
       } else {
-        // Try same-line "LABEL: valor" pattern
-        var ci = lines[i].indexOf(':');
-        if (ci > 2 && ci < 50) {
-          var lk = normalLabel(lines[i].substring(0, ci));
-          var lv = lines[i].substring(ci + 1).trim();
-          if (LABEL_SET[lk] && lv.length > 0 && lv.length < 200) found.push([lk, lv]);
-        }
         i++;
       }
     }
 
     var seen = {};
-    return found.filter(function(r){ if(seen[r[0]])return false; seen[r[0]]=true; return true; });
+    return found.filter(function(r){if(seen[r[0]])return false; seen[r[0]]=true; return true;});
+  }
+
+  /* ── Try to fill+submit, retry until form is available ──────── */
+  var fillAttempts = 0;
+  function attemptFillAndSubmit() {
+    if (DONE) return;
+    var btn = findConsultarButton();
+    if (!btn) {
+      fillAttempts++;
+      if (fillAttempts < 20) setTimeout(attemptFillAndSubmit, 1000);
+      return;
+    }
+    var form = btn.form || btn.closest('form');
+    var inp = findCedulaInput(form || document);
+    if (!inp) {
+      fillAttempts++;
+      if (fillAttempts < 20) setTimeout(attemptFillAndSubmit, 1000);
+      return;
+    }
+    setNative(inp, CI);
+    setTimeout(function() {
+      // Re-fetch in case form re-rendered
+      var btn2 = findConsultarButton() || btn;
+      var form2 = btn2.form || btn2.closest('form') || form;
+      var inp2 = findCedulaInput(form2 || document) || inp;
+      if (inp2.value !== CI) setNative(inp2, CI);
+      trySubmit(inp2, btn2);
+    }, 700);
   }
 
   /* ── Main flow ──────────────────────────────────────────────── */
-  fillInput();
 
-  setTimeout(function() {
-    fillInput();
-    clickSearch();
+  // If results already showing (e.g. page reloaded with them), extract immediately
+  if (hasResults()) {
+    var d0 = extractResults();
+    if (d0.length >= 1) { done({ok:true, results:d0}); return; }
+  }
 
-    var attempts = 0;
-    var timer = setInterval(function() {
-      attempts++;
-      var hasRes = hasResultsLoaded();
-      var notFnd = !hasRes && isNotFoundPage();
+  attemptFillAndSubmit();
 
-      if (hasRes || notFnd || attempts >= 60) {
-        clearInterval(timer);
-        if (hasRes) {
-          var data = extractResults();
-          window.AndroidBridge.sendResult(JSON.stringify({
-            ok: data.length >= 1, results: data, notFound: false
-          }));
-        } else {
-          window.AndroidBridge.sendResult(JSON.stringify({ok:false, notFound:notFnd}));
-        }
+  // Poll for result or not-found
+  var pollCount = 0;
+  var poll = setInterval(function() {
+    if (DONE) { clearInterval(poll); return; }
+    pollCount++;
+    if (hasResults()) {
+      var data = extractResults();
+      if (data.length >= 1) {
+        clearInterval(poll);
+        done({ok:true, results:data});
+        return;
       }
-    }, 500);
-  }, 700);
+    }
+    if (isNotFoundNow()) {
+      clearInterval(poll);
+      done({ok:false, notFound:true});
+      return;
+    }
+    if (pollCount >= 120) { // ~60s
+      clearInterval(poll);
+      // Final fallback: extract whatever we have
+      var fb = extractResults();
+      if (fb.length >= 2 && (document.body.innerText||'').indexOf(CI) !== -1) {
+        done({ok:true, results:fb});
+      } else {
+        done({ok:false, notFound:false});
+      }
+    }
+  }, 500);
 
 })();
 """.trimIndent()
