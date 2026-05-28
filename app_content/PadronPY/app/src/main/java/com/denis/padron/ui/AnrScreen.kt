@@ -201,24 +201,69 @@ private fun buildAnrJs(cedula: String): String {
     if (btn) { btn.click(); return true; }
     var form = document.querySelector('form');
     if (form) {
-      var ev = new Event('submit', {bubbles:true, cancelable:true});
-      form.dispatchEvent(ev);
+      form.dispatchEvent(new Event('submit', {bubbles:true, cancelable:true}));
       return true;
     }
     return false;
   }
 
-  /* ── Extractor universal ────────────────────────────────────── */
+  /* ── Normalización ──────────────────────────────────────────── */
 
-  var KNOWN = ['CEDULA DE IDENTIDAD','CEDULA','CI','NOMBRES','APELLIDOS','APELLIDO',
-    'NOMBRE','FECHA DE NACIMIENTO','NACIMIENTO','DEPARTAMENTO','DEPTO','DISTRITO',
-    'SECCIONAL','SECCION','LOCAL','MESA','ORDEN','FONO','BARRIO','CIUDAD'];
+  var ACCENT_FROM = 'áéíóúüñÁÉÍÓÚÜÑ';
+  var ACCENT_TO   = 'aeiouunAEIOUUN';
+  function norm(s) {
+    var r = (s || '').trim().toUpperCase();
+    for (var i = 0; i < ACCENT_FROM.length; i++)
+      r = r.split(ACCENT_FROM[i]).join(ACCENT_TO[i]);
+    return r;
+  }
+
+  var LABEL_SET = {
+    'CEDULA DE IDENTIDAD':1,'CEDULA':1,'CI':1,'NRO. DE CEDULA':1,'NUMERO DE CEDULA':1,
+    'NOMBRES':1,'NOMBRE':1,'APELLIDOS':1,'APELLIDO':1,'NOMBRE Y APELLIDO':1,
+    'FECHA DE NACIMIENTO':1,'NACIMIENTO':1,'FECHA NACIMIENTO':1,
+    'DEPARTAMENTO':1,'DEPTO':1,'DISTRITO':1,'CIUDAD':1,'BARRIO':1,
+    'SECCIONAL':1,'SECCION':1,'LOCAL':1,'MESA':1,'ORDEN':1,
+    'FONO':1,'TELEFONO':1,'SEXO':1,'ESTADO':1
+  };
+
+  function isLabel(txt) { return !!LABEL_SET[norm(txt).replace(/:${'$'}/, '')]; }
+
+  /* ── Extractor por elemento-adyacente ───────────────────────── */
+
+  function collectLeaves() {
+    var leaves = [];
+    var walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode: function(node) {
+          if (node.offsetWidth === 0 && node.offsetHeight === 0) return NodeFilter.FILTER_SKIP;
+          var tag = node.tagName;
+          if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'INPUT' ||
+              tag === 'BUTTON' || tag === 'TEXTAREA') return NodeFilter.FILTER_SKIP;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+    var node;
+    while ((node = walker.nextNode())) {
+      // Only collect elements whose direct text content is meaningful
+      var direct = '';
+      for (var i = 0; i < node.childNodes.length; i++) {
+        if (node.childNodes[i].nodeType === 3) direct += node.childNodes[i].nodeValue;
+      }
+      direct = direct.trim();
+      if (direct.length > 0 && direct.length < 300) leaves.push({el: node, txt: direct});
+    }
+    return leaves;
+  }
 
   function extractResults() {
     var found = [];
     var body  = document.body;
 
-    // --- 1. Tablas ---
+    // --- 1. Tablas (k/v en celdas de la misma fila) ---
     body.querySelectorAll('table tr').forEach(function(row) {
       var cells = row.querySelectorAll('td,th');
       if (cells.length >= 2) {
@@ -228,62 +273,53 @@ private fun buildAnrJs(cedula: String): String {
           found.push([k, v]);
       }
     });
+    if (found.length >= 2) return dedup(found);
 
     // --- 2. dl/dt/dd ---
-    if (!found.length) {
-      body.querySelectorAll('dt').forEach(function(dt) {
-        var dd = dt.nextElementSibling;
-        if (dd && dd.tagName === 'DD') found.push([dt.innerText.trim(), dd.innerText.trim()]);
-      });
-    }
+    body.querySelectorAll('dt').forEach(function(dt) {
+      var dd = dt.nextElementSibling;
+      if (dd && dd.tagName === 'DD') found.push([dt.innerText.trim(), dd.innerText.trim()]);
+    });
+    if (found.length >= 2) return dedup(found);
 
-    // --- 3. Labels conocidos via XPath ---
-    if (!found.length) {
-      KNOWN.forEach(function(label) {
-        if (found.find(function(r){ return r[0].toUpperCase().indexOf(label) !== -1; })) return;
-        try {
-          var xpath = "//*[contains(translate(normalize-space(text())," +
-            "'abcdefghijklmnopqrstuvwxyzáéíóúüñ'," +
-            "'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ'),'" + label + "')]";
-          var iter = document.evaluate(xpath, body, null,
-            XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
-          var node = iter.iterateNext();
-          while (node) {
-            var txt = (node.innerText || node.textContent || '').trim();
-            var pos = txt.toUpperCase().indexOf(label);
-            if (pos !== -1) {
-              var after = txt.substring(pos + label.length).replace(/^[:\s\-]+/, '').trim();
-              if (after && after.length > 0 && after.length < 200 &&
-                  after.toUpperCase() !== label) {
-                found.push([label, after]);
-                break;
-              }
-            }
-            node = iter.iterateNext();
+    // --- 3. Elemento-adyacente: etiqueta exacta → siguiente elemento = valor ---
+    var leaves = collectLeaves();
+    for (var i = 0; i < leaves.length - 1; i++) {
+      var labelTxt = leaves[i].txt.replace(/:${'$'}/, '').trim();
+      if (isLabel(labelTxt)) {
+        // Look ahead for the value (skip blank/whitespace leaves)
+        for (var j = i + 1; j < Math.min(i + 4, leaves.length); j++) {
+          var valTxt = leaves[j].txt.trim();
+          if (valTxt.length > 0 && !isLabel(valTxt)) {
+            found.push([labelTxt, valTxt]);
+            i = j; // advance past consumed value
+            break;
           }
-        } catch(ex) {}
-      });
-    }
-
-    // --- 4. li / p con ":" ---
-    if (!found.length) {
-      body.querySelectorAll('li, p').forEach(function(el) {
-        if (el.children.length > 2) return;
-        var txt = (el.innerText || '').trim();
-        if (txt.length < 4 || txt.length > 400) return;
-        var ci = txt.indexOf(':');
-        if (ci > 0 && ci < 70) {
-          var k = txt.substring(0, ci).trim();
-          var v = txt.substring(ci + 1).trim();
-          if (k && v && k.length < 70 && v.length < 200) found.push([k, v]);
         }
-      });
+      }
     }
+    if (found.length >= 2) return dedup(found);
 
-    // Deduplicar
+    // --- 4. li / p con ":" en el mismo elemento ---
+    body.querySelectorAll('li, p').forEach(function(el) {
+      if (el.children.length > 2) return;
+      var txt = (el.innerText || '').trim();
+      if (txt.length < 4 || txt.length > 400) return;
+      var ci = txt.indexOf(':');
+      if (ci > 0 && ci < 70) {
+        var k = txt.substring(0, ci).trim();
+        var v = txt.substring(ci + 1).trim();
+        if (k && v && k.length < 70 && v.length < 200) found.push([k, v]);
+      }
+    });
+
+    return dedup(found);
+  }
+
+  function dedup(arr) {
     var seen = {};
-    return found.filter(function(r) {
-      var key = r[0].toUpperCase();
+    return arr.filter(function(r) {
+      var key = norm(r[0]);
       if (seen[key]) return false;
       seen[key] = true;
       return true;
@@ -303,7 +339,7 @@ private fun buildAnrJs(cedula: String): String {
   fillInput();
 
   setTimeout(function() {
-    fillInput(); // re-llenar por si hay reactivity delay
+    fillInput();
     clickSearch();
 
     var attempts = 0;
