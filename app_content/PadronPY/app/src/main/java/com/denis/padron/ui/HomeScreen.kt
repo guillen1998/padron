@@ -95,13 +95,11 @@ fun HomeScreen(
                     subtitle = "TRIBUNAL SUPERIOR DE JUSTICIA ELECTORAL",
                     description = "Consultá tu inscripción en el padrón electoral nacional y tu local de votación",
                     icon = Icons.Default.HowToVote,
-                    gradient = Brush.linearGradient(
-                        colors = listOf(Color(0xCC8B0000), Color(0xCCD52B1E), Color(0xCC002B7F)),
-                        start = Offset(0f, 0f),
-                        end = Offset(900f, 400f)
+                    gradient = Brush.verticalGradient(
+                        colors = listOf(Color(0xFF8B0000), Color(0xFF002B7F))
                     ),
-                    glowColor = Color(0x33D52B1E),
-                    accentColor = Color(0xFFFF8A80),
+                    glowColor = Color(0x22D52B1E),
+                    accentColor = Color(0xFFFFFFFF),
                     flagColors = listOf(Color(0xFFD52B1E), Color.White, Color(0xFF002B7F)),
                     onClick = onNavigateToTsje
                 )
@@ -143,8 +141,8 @@ fun HomeScreen(
                 // Footer
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Padrón General Paraguay  •  2026\nDatos provistos por TSJE, ANR y PLRA",
-                    color = Color.White.copy(alpha = 0.25f),
+                    text = "Padrón General Paraguay  •  2026\nDatos provistos por TSJE, ANR y PLRA\nDesarrollado por Denis Guillén",
+                    color = Color.White.copy(alpha = 0.28f),
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center,
                     lineHeight = 17.sp,

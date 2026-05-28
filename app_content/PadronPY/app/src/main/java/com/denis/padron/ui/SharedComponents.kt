@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -29,76 +30,136 @@ import com.denis.padron.data.PadronState
 import kotlin.math.cos
 import kotlin.math.sin
 
-// ─── Logo mapa Paraguay ───────────────────────────────────────────────────────
+// ─── Bandera Paraguay circular ────────────────────────────────────────────────
 
 @Composable
-fun ParaguayMapLogo(size: Dp = 52.dp) {
+fun ParaguayFlagBadge(size: Dp = 52.dp) {
     Canvas(modifier = Modifier.size(size)) {
-        val w = this.size.width; val h = this.size.height
-        val mapPath = Path().apply {
-            moveTo(.06f*w,.12f*h); lineTo(.64f*w,.05f*h); lineTo(.97f*w,.22f*h)
-            lineTo(.95f*w,.76f*h); lineTo(.80f*w,.96f*h); lineTo(.42f*w,.97f*h)
-            lineTo(.13f*w,.83f*h); lineTo(.04f*w,.46f*h); close()
-        }
-        drawPath(mapPath, color = Color(0xFFD52B1E).copy(.92f))
-        val chacoPath = Path().apply {
-            moveTo(.06f*w,.12f*h); lineTo(.51f*w,.05f*h)
-            quadraticTo(.47f*w,.51f*h,.44f*w,.97f*h)
-            lineTo(.42f*w,.97f*h); lineTo(.13f*w,.83f*h); lineTo(.04f*w,.46f*h); close()
-        }
-        drawPath(chacoPath, color = Color(0xFF002B7F).copy(.80f))
-        val band = Path().apply {
-            moveTo(.04f*w,.47f*h); lineTo(.95f*w,.47f*h)
-            lineTo(.95f*w,.56f*h); lineTo(.04f*w,.56f*h); close()
-        }
-        drawPath(band, color = Color.White.copy(.22f))
-        val river = Path().apply { moveTo(.51f*w,.05f*h); quadraticTo(.47f*w,.51f*h,.44f*w,.97f*h) }
-        drawPath(river, color = Color.White.copy(.75f), style = Stroke(1.8.dp.toPx()))
-        drawPath(mapPath, color = Color.White.copy(.55f), style = Stroke(1.5.dp.toPx()))
-        val cx=.70f*w; val cy=.52f*h; val ro=.085f*w; val ri=.038f*w
+        val w  = this.size.width
+        val h  = this.size.height
+        val cx = w / 2f
+        val cy = h / 2f
+        val r  = minOf(w, h) / 2f
+
+        // Círculo con tres franjas (gradiente de stops duros)
+        drawCircle(
+            brush = Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0.000f to Color(0xFFD52B1E),
+                    0.333f to Color(0xFFD52B1E),
+                    0.334f to Color.White,
+                    0.666f to Color.White,
+                    0.667f to Color(0xFF002B7F),
+                    1.000f to Color(0xFF002B7F)
+                ),
+                startY = 0f,
+                endY   = h
+            ),
+            radius = r
+        )
+
+        // Borde blanco
+        drawCircle(
+            color  = Color.White.copy(alpha = 0.50f),
+            radius = r - 1.dp.toPx(),
+            style  = Stroke(1.8.dp.toPx())
+        )
+
+        // Estrella dorada (5 puntas)
+        val ro = r * 0.50f
+        val ri = r * 0.20f
         val star = Path().apply {
             for (i in 0 until 5) {
-                val oa=Math.toRadians(-90.0+i*72.0); val ia=Math.toRadians(-90.0+i*72.0+36.0)
-                val ox=(cx+ro*cos(oa)).toFloat(); val oy=(cy+ro*sin(oa)).toFloat()
-                val ix=(cx+ri*cos(ia)).toFloat(); val iy=(cy+ri*sin(ia)).toFloat()
-                if(i==0) moveTo(ox,oy) else lineTo(ox,oy); lineTo(ix,iy)
+                val oa = Math.toRadians(-90.0 + i * 72.0)
+                val ia = Math.toRadians(-90.0 + i * 72.0 + 36.0)
+                val ox = (cx + ro * cos(oa)).toFloat()
+                val oy = (cy + ro * sin(oa)).toFloat()
+                val ix = (cx + ri * cos(ia)).toFloat()
+                val iy = (cy + ri * sin(ia)).toFloat()
+                if (i == 0) moveTo(ox, oy) else lineTo(ox, oy)
+                lineTo(ix, iy)
             }
             close()
         }
-        drawPath(star, color = Color.White)
+        drawPath(star, color = Color(0xFFFFD700))
+        drawPath(star, color = Color(0xFFA07820), style = Stroke(0.6.dp.toPx()))
     }
 }
 
-// ─── Header Home ──────────────────────────────────────────────────────────────
+// ─── Franja de la bandera paraguaya ──────────────────────────────────────────
+
+@Composable
+private fun FlagStrip(height: Dp = 4.dp) {
+    Row(modifier = Modifier.fillMaxWidth().height(height)) {
+        Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFFD52B1E)))
+        Box(Modifier.weight(1f).fillMaxHeight().background(Color.White))
+        Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF002B7F)))
+    }
+}
+
+// ─── Header Home (centrado + bandera) ────────────────────────────────────────
 
 @Composable
 fun AppHeader() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0x99383838))
-            .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 14.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            ParaguayMapLogo(size = 52.dp)
-            Column {
-                Text("Padrón General", color = Color.White, fontSize = 21.sp,
-                    fontWeight = FontWeight.Bold, letterSpacing = .3.sp)
-                Text("del Paraguay  •  2026", color = Color.White.copy(.65f), fontSize = 13.sp)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        FlagStrip(height = 5.dp)
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xFF6B0000), Color(0xFF0A0E1A), Color(0xFF001966))
+                    )
+                )
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                ParaguayFlagBadge(size = 58.dp)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Padrón General del Paraguay",
+                    color      = Color.White,
+                    fontSize   = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign  = TextAlign.Center,
+                    letterSpacing = 0.2.sp
+                )
+                Text(
+                    "2026",
+                    color     = Color.White.copy(.60f),
+                    fontSize  = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Desarrollado por Denis Guillén",
+                    color      = Color(0xFFFFD700).copy(.85f),
+                    fontSize   = 11.sp,
+                    fontStyle  = FontStyle.Italic,
+                    textAlign  = TextAlign.Center
+                )
             }
         }
+
+        FlagStrip(height = 3.dp)
     }
 }
 
-// ─── Header de sub-pantalla — acepta color personalizado ─────────────────────
+// ─── Header sub-pantalla ─────────────────────────────────────────────────────
 
 @Composable
 fun PadronScreenHeader(
     title          : String,
     subtitle       : String,
     accentColor    : Color,
-    backgroundColor: Color = Color(0x99383838),   // ← color por sección
+    backgroundColor: Color = Color(0x99383838),
     onBack         : () -> Unit
 ) {
     Box(
@@ -113,8 +174,15 @@ fun PadronScreenHeader(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver", tint = Color.White)
             }
             Column(Modifier.weight(1f)) {
-                Text(title,    color = Color.White,   fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = accentColor,   fontSize = 12.sp)
+                Text(title,    color = Color.White,  fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(subtitle, color = accentColor,  fontSize = 12.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Desarrollado por Denis Guillén",
+                    color     = Color(0xFFFFD700).copy(.75f),
+                    fontSize  = 10.sp,
+                    fontStyle = FontStyle.Italic
+                )
             }
         }
     }
@@ -159,7 +227,6 @@ fun SearchCard(
 
             extraContent?.let { it() }
 
-            // Botón SIN spinner — el único spinner está en la sección de resultados
             Button(
                 onClick  = doSearch,
                 enabled  = (cedula.isNotBlank() || extraEnabled) && !isLoading,
@@ -205,7 +272,6 @@ fun PadronResultSection(state: PadronState, accentColor: Color) {
         when (s) {
             is PadronState.Idle    -> Box(Modifier.fillMaxWidth())
             is PadronState.Loading -> {
-                // Un solo spinner
                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = accentColor, strokeWidth = 3.dp)
@@ -270,7 +336,7 @@ fun StatusCard(emoji: String, title: String, message: String, color: Color) {
     }
 }
 
-// ─── Info card (cabecera descriptiva de cada sección) ────────────────────────
+// ─── Info card ────────────────────────────────────────────────────────────────
 
 @Composable
 fun InfoCard(emoji: String, title: String, desc: String, accentColor: Color) {
@@ -283,7 +349,7 @@ fun InfoCard(emoji: String, title: String, desc: String, accentColor: Color) {
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(emoji, style = MaterialTheme.typography.titleLarge)
             Column {
-                Text(title, color = accentColor,          style = MaterialTheme.typography.labelLarge)
+                Text(title, color = accentColor,           style = MaterialTheme.typography.labelLarge)
                 Text(desc,  color = Color.White.copy(.65f), style = MaterialTheme.typography.bodySmall)
             }
         }

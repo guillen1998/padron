@@ -95,11 +95,12 @@ private fun AnrWebView(
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled  = true
-                    settings.userAgentString    =
+                    settings.javaScriptEnabled    = true
+                    settings.domStorageEnabled    = true
+                    settings.javaScriptCanOpenWindowsAutomatically = true
+                    settings.userAgentString =
                         "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
-                        "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                        "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
                     var resultHandled = false
 
@@ -117,22 +118,25 @@ private fun AnrWebView(
 
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, pageUrl: String) {
-                            // Esperar 4s para que la SPA monte completamente, luego llenar y enviar
+                            // Esperar 5s para que la SPA/WordPress monte completamente
                             mainHandler.postDelayed({
-                                val fillJs = buildAnrFillAndExtractJs(cedula)
-                                view.evaluateJavascript(fillJs, null)
-                            }, 4000L)
+                                if (!resultHandled) {
+                                    view.evaluateJavascript(buildAnrJs(cedula), null)
+                                }
+                            }, 5000L)
 
-                            // Fallback: forzar extracción después de 25s
+                            // Timeout de seguridad a los 35s
                             mainHandler.postDelayed({
                                 if (!resultHandled) {
                                     resultHandled = true
-                                    onNotFound("Tiempo de espera agotado. Intentá de nuevo.")
+                                    onNotFound("Tiempo agotado. Verificá tu conexión e intentá de nuevo.")
                                 }
-                            }, 25000L)
+                            }, 35000L)
                         }
 
-                        override fun onReceivedError(view: WebView, req: WebResourceRequest, err: WebResourceError) {
+                        override fun onReceivedError(
+                            view: WebView, req: WebResourceRequest, err: WebResourceError
+                        ) {
                             if (req.isForMainFrame && !resultHandled) {
                                 resultHandled = true
                                 onError("Sin conexión o sitio no disponible")
@@ -140,7 +144,7 @@ private fun AnrWebView(
                         }
                     }
 
-                    loadUrl("https://www.anr.org.py/pre-padron-2026/")
+                    loadUrl("https://www.anr.org.py/padron-2026/")
                 }
             },
             modifier = Modifier.size(1.dp, 1.dp)
@@ -148,118 +152,181 @@ private fun AnrWebView(
     }
 }
 
-// ── JS: llenar formulario + esperar resultado + extraer ────────────────────────
-// La estructura de ANR es lista <ul><li> con los labels conocidos.
-// Busca cada label por texto y extrae el valor que le sigue.
+// ── JS multi-estrategia ────────────────────────────────────────────────────────
 
-private fun buildAnrFillAndExtractJs(cedula: String) = """
+private fun buildAnrJs(cedula: String): String {
+    val safeCI = cedula.replace("'", "\\'").replace("\"", "\\\"")
+    return """
 (function(){
-  var ci = '$cedula';
+  'use strict';
+  var CI = '$safeCI';
 
-  // Campos conocidos del resultado ANR (exactamente como aparecen en la página)
-  var LABELS = [
-    'CEDULA DE IDENTIDAD', 'NOMBRES', 'APELLIDOS', 'FECHA DE NACIMIENTO',
-    'DEPARTAMENTO', 'DISTRITO', 'SECCIONAL', 'LOCAL', 'MESA', 'ORDEN'
-  ];
+  /* ── Helpers ───────────────────────────────────────────────── */
 
   function setNative(el, v) {
-    if(!el) return;
     try {
-      var s = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-      if(s && s.set) s.set.call(el, v);
-      else el.value = v;
+      var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+      if (d && d.set) d.set.call(el, v); else el.value = v;
     } catch(e) { el.value = v; }
-    ['focus','input','change','keyup'].forEach(function(ev) {
-      el.dispatchEvent(new Event(ev, {bubbles:true}));
+    ['focus','input','change','keyup','keydown'].forEach(function(n) {
+      el.dispatchEvent(new Event(n, {bubbles:true}));
     });
   }
 
-  // ─── 1. Llenar el input de cédula ─────────────────────────────────────────
-  var inp = null;
-  Array.from(document.querySelectorAll('input')).forEach(function(i) {
-    if(!inp && i.type !== 'hidden' && i.type !== 'checkbox' &&
-       i.type !== 'submit' && i.offsetWidth > 0 && !i.disabled) inp = i;
-  });
-  if(inp) setNative(inp, ci);
-
-  // ─── 2. Click en "Consultar" ──────────────────────────────────────────────
-  setTimeout(function() {
-    var btn = null;
-    Array.from(document.querySelectorAll('button,input[type=button],input[type=submit]')).forEach(function(b) {
-      if(!btn && /consul|buscar/i.test((b.textContent||'')+(b.value||''))) btn = b;
+  function fillInput() {
+    var inp = null;
+    Array.from(document.querySelectorAll('input')).forEach(function(i) {
+      if (inp) return;
+      if (i.type === 'hidden' || i.type === 'checkbox' || i.type === 'radio' ||
+          i.type === 'submit' || i.type === 'button' || i.disabled) return;
+      if (i.offsetWidth > 0) inp = i;
     });
-    if(!btn) {
-      var all = Array.from(document.querySelectorAll('button')).filter(function(b) { return b.offsetWidth>0; });
-      if(all.length) btn = all[all.length-1];
+    if (inp) { setNative(inp, CI); return true; }
+    return false;
+  }
+
+  function clickSearch() {
+    var btn = null;
+    Array.from(document.querySelectorAll('button,input[type=submit],input[type=button]'))
+      .forEach(function(b) {
+        if (btn || b.offsetWidth === 0 || b.disabled) return;
+        var t = (b.textContent || b.value || '').toLowerCase();
+        if (/consul|buscar|search|enviar|busque/i.test(t)) btn = b;
+      });
+    if (!btn) {
+      var all = Array.from(document.querySelectorAll('button,input[type=submit]'))
+                    .filter(function(b) { return b.offsetWidth > 0; });
+      if (all.length) btn = all[all.length - 1];
     }
-    if(btn) btn.click();
+    if (btn) { btn.click(); return true; }
+    var form = document.querySelector('form');
+    if (form) {
+      var ev = new Event('submit', {bubbles:true, cancelable:true});
+      form.dispatchEvent(ev);
+      return true;
+    }
+    return false;
+  }
 
-    // ─── 3. Esperar resultado y extraer ─────────────────────────────────────
-    // Polling cada 500ms durante máximo 20s
-    var attempts = 0;
-    var interval = setInterval(function() {
-      attempts++;
+  /* ── Extractor universal ────────────────────────────────────── */
 
-      // Comprobar "Afiliado no encontrado" (sin datos)
-      var bodyTxt = document.body.textContent;
-      var liItems = Array.from(document.querySelectorAll('ul li, ol li'));
+  var KNOWN = ['CEDULA DE IDENTIDAD','CEDULA','CI','NOMBRES','APELLIDOS','APELLIDO',
+    'NOMBRE','FECHA DE NACIMIENTO','NACIMIENTO','DEPARTAMENTO','DEPTO','DISTRITO',
+    'SECCIONAL','SECCION','LOCAL','MESA','ORDEN','FONO','BARRIO','CIUDAD'];
 
-      // Extraer por labels conocidos
-      var results = [];
-      LABELS.forEach(function(label) {
-        // Buscar elemento que contenga el label
-        var found = liItems.find(function(li) {
-          return li.textContent.indexOf(label) !== -1;
-        });
-        if(found) {
-          var fullText = found.textContent.trim();
-          var idx = fullText.indexOf(label);
-          if(idx !== -1) {
-            var after = fullText.substring(idx + label.length).trim().replace(/^[:\\s]+/, '');
-            if(after && after.length > 0 && after !== label) {
-              results.push([label, after]);
+  function extractResults() {
+    var found = [];
+    var body  = document.body;
+
+    // --- 1. Tablas ---
+    body.querySelectorAll('table tr').forEach(function(row) {
+      var cells = row.querySelectorAll('td,th');
+      if (cells.length >= 2) {
+        var k = cells[0].innerText.trim().replace(/:${'$'}/, '').trim();
+        var v = cells[1].innerText.trim();
+        if (k && v && k !== v && k.length < 80 && v.length < 300)
+          found.push([k, v]);
+      }
+    });
+
+    // --- 2. dl/dt/dd ---
+    if (!found.length) {
+      body.querySelectorAll('dt').forEach(function(dt) {
+        var dd = dt.nextElementSibling;
+        if (dd && dd.tagName === 'DD') found.push([dt.innerText.trim(), dd.innerText.trim()]);
+      });
+    }
+
+    // --- 3. Labels conocidos via XPath ---
+    if (!found.length) {
+      KNOWN.forEach(function(label) {
+        if (found.find(function(r){ return r[0].toUpperCase().indexOf(label) !== -1; })) return;
+        try {
+          var xpath = "//*[contains(translate(normalize-space(text())," +
+            "'abcdefghijklmnopqrstuvwxyzáéíóúüñ'," +
+            "'ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ'),'" + label + "')]";
+          var iter = document.evaluate(xpath, body, null,
+            XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+          var node = iter.iterateNext();
+          while (node) {
+            var txt = (node.innerText || node.textContent || '').trim();
+            var pos = txt.toUpperCase().indexOf(label);
+            if (pos !== -1) {
+              var after = txt.substring(pos + label.length).replace(/^[:\s\-]+/, '').trim();
+              if (after && after.length > 0 && after.length < 200 &&
+                  after.toUpperCase() !== label) {
+                found.push([label, after]);
+                break;
+              }
             }
+            node = iter.iterateNext();
           }
+        } catch(ex) {}
+      });
+    }
+
+    // --- 4. li / p con ":" ---
+    if (!found.length) {
+      body.querySelectorAll('li, p').forEach(function(el) {
+        if (el.children.length > 2) return;
+        var txt = (el.innerText || '').trim();
+        if (txt.length < 4 || txt.length > 400) return;
+        var ci = txt.indexOf(':');
+        if (ci > 0 && ci < 70) {
+          var k = txt.substring(0, ci).trim();
+          var v = txt.substring(ci + 1).trim();
+          if (k && v && k.length < 70 && v.length < 200) found.push([k, v]);
         }
       });
+    }
 
-      // También buscar en divs / spans si no hay <li>
-      if(!results.length) {
-        LABELS.forEach(function(label) {
-          var xpath = "//*[contains(text(),'"+label+"')]";
-          try {
-            var iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
-            var node = iter.iterateNext();
-            while(node) {
-              var txt = node.textContent.trim();
-              var pos = txt.indexOf(label);
-              if(pos !== -1) {
-                var val = txt.substring(pos + label.length).trim().replace(/^[:\\s]+/, '');
-                if(val && val.length > 0 && val !== label && results.findIndex(function(r){return r[0]===label;}) === -1) {
-                  results.push([label, val]);
-                }
-              }
-              node = iter.iterateNext();
-            }
-          } catch(ex){}
-        });
-      }
+    // Deduplicar
+    var seen = {};
+    return found.filter(function(r) {
+      var key = r[0].toUpperCase();
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
 
-      var hasRealData = results.length >= 2; // Al menos 2 campos = hay resultado
-      var noEncontrado = bodyTxt.includes('Afiliado no encontrado') && !hasRealData;
+  function isNotFoundPage() {
+    var txt = (document.body.innerText || '').toLowerCase();
+    return ['no encontrado','no figura','no registr','no se encontr',
+            'sin resultados','not found','no está'].some(function(p) {
+      return txt.indexOf(p) !== -1;
+    });
+  }
 
-      if(hasRealData || noEncontrado || attempts >= 40) {
-        clearInterval(interval);
-        if(hasRealData) {
-          window.AndroidBridge.sendResult(JSON.stringify({ok:true, results:results}));
+  /* ── Flujo principal ────────────────────────────────────────── */
+
+  fillInput();
+
+  setTimeout(function() {
+    fillInput(); // re-llenar por si hay reactivity delay
+    clickSearch();
+
+    var attempts = 0;
+    var timer = setInterval(function() {
+      attempts++;
+      var data    = extractResults();
+      var hasData = data.length >= 2;
+      var notFnd  = isNotFoundPage();
+
+      if (hasData || notFnd || attempts >= 60) {
+        clearInterval(timer);
+        if (hasData) {
+          window.AndroidBridge.sendResult(JSON.stringify({ok:true, results:data}));
         } else {
-          window.AndroidBridge.sendResult(JSON.stringify({ok:false, notFound:noEncontrado}));
+          window.AndroidBridge.sendResult(JSON.stringify({ok:false, notFound:notFnd}));
         }
       }
     }, 500);
-  }, 400);
+  }, 700);
+
 })();
 """.trimIndent()
+}
 
 private fun parseAnrJson(
     json      : String,
@@ -268,27 +335,28 @@ private fun parseAnrJson(
 ) {
     val cleaned = json.trim().let {
         if (it.startsWith("\"") && it.endsWith("\""))
-            it.substring(1, it.length-1).replace("\\\"","\"").replace("\\n","").replace("\\t","")
+            it.substring(1, it.length - 1)
+              .replace("\\\"","\"").replace("\\n","").replace("\\t","")
         else it
     }
     try {
         val obj = JSONObject(cleaned)
         if (obj.optBoolean("ok")) {
-            val arr = obj.optJSONArray("results") ?: JSONArray()
-            val campos = mutableListOf<Pair<String,String>>()
+            val arr    = obj.optJSONArray("results") ?: JSONArray()
+            val campos = mutableListOf<Pair<String, String>>()
             for (i in 0 until arr.length()) {
                 val p = arr.optJSONArray(i) ?: continue
-                val k = p.optString(0,"").trim()
-                val v = p.optString(1,"").trim()
+                val k = p.optString(0, "").trim()
+                val v = p.optString(1, "").trim()
                 if (v.isNotEmpty()) campos.add(k to v)
             }
             if (campos.isNotEmpty()) onResult(campos)
-            else onNotFound("No se obtuvieron datos para la cédula consultada")
+            else onNotFound("No se obtuvieron datos para la cédula consultada.")
         } else {
-            val notFound = obj.optBoolean("notFound", false)
-            onNotFound(if (notFound) "No encontrado en el Padrón ANR" else "No se obtuvieron datos")
+            val nf = obj.optBoolean("notFound", false)
+            onNotFound(if (nf) "No encontrado en el Padrón ANR." else "No se obtuvieron datos.")
         }
     } catch (e: Exception) {
-        onNotFound("Error al procesar respuesta")
+        onNotFound("Error al procesar respuesta: ${e.localizedMessage}")
     }
 }
