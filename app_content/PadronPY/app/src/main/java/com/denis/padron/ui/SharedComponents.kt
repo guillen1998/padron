@@ -113,38 +113,31 @@ fun AppHeader() {
                     )
                 )
                 .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
-            Column(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                ParaguayFlagBadge(size = 58.dp)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Padrón General del Paraguay",
-                    color      = Color.White,
-                    fontSize   = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign  = TextAlign.Center,
-                    letterSpacing = 0.2.sp
-                )
-                Text(
-                    "2026",
-                    color     = Color.White.copy(.60f),
-                    fontSize  = 13.sp,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "Desarrollado por Denis Guillén",
-                    color      = Color(0xFFFFD700).copy(.85f),
-                    fontSize   = 11.sp,
-                    fontStyle  = FontStyle.Italic,
-                    textAlign  = TextAlign.Center
-                )
+                ParaguayFlagBadge(size = 44.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(horizontalAlignment = Alignment.Start) {
+                    Text(
+                        "Padrón General del Paraguay",
+                        color      = Color.White,
+                        fontSize   = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.1.sp
+                    )
+                    Text(
+                        "2026  •  Desarrollado por Denis Guillen",
+                        color     = Color(0xFFFFD700).copy(.80f),
+                        fontSize  = 11.sp,
+                        fontStyle = FontStyle.Italic
+                    )
+                }
             }
         }
 
@@ -178,7 +171,7 @@ fun PadronScreenHeader(
                 Text(subtitle, color = accentColor,  fontSize = 12.sp)
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "Desarrollado por Denis Guillén",
+                    "Desarrollado por Denis Guillen",
                     color     = Color(0xFFFFD700).copy(.75f),
                     fontSize  = 10.sp,
                     fontStyle = FontStyle.Italic

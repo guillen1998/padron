@@ -148,7 +148,7 @@ fun HomeScreen(
                 // Footer
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Padrón General Paraguay  •  2026\nDatos provistos por TSJE, ANR y PLRA\nDesarrollado por Denis Guillén",
+                    text = "Padrón General Paraguay  •  2026\nDatos provistos por TSJE, ANR y PLRA\nDesarrollado por Denis Guillen",
                     color = Color.White.copy(alpha = 0.28f),
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center,

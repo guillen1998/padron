@@ -161,7 +161,7 @@ private fun buildAnrJs(cedula: String): String {
   'use strict';
   var CI = '$safeCI';
 
-  /* ── Helpers ───────────────────────────────────────────────── */
+  /* ── Input helpers ──────────────────────────────────────────── */
 
   function setNative(el, v) {
     try {
@@ -209,127 +209,111 @@ private fun buildAnrJs(cedula: String): String {
 
   /* ── Normalización ──────────────────────────────────────────── */
 
-  var ACCENT_FROM = 'áéíóúüñÁÉÍÓÚÜÑ';
-  var ACCENT_TO   = 'aeiouunAEIOUUN';
+  var ACCENT_MAP = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ü':'u','ñ':'n',
+                    'Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ü':'U','Ñ':'N'};
   function norm(s) {
-    var r = (s || '').trim().toUpperCase();
-    for (var i = 0; i < ACCENT_FROM.length; i++)
-      r = r.split(ACCENT_FROM[i]).join(ACCENT_TO[i]);
-    return r;
+    return (s||'').trim().toUpperCase().replace(/[áéíóúüñÁÉÍÓÚÜÑ]/g, function(c){
+      return ACCENT_MAP[c] || c;
+    });
   }
 
-  var LABEL_SET = {
-    'CEDULA DE IDENTIDAD':1,'CEDULA':1,'CI':1,'NRO. DE CEDULA':1,'NUMERO DE CEDULA':1,
-    'NOMBRES':1,'NOMBRE':1,'APELLIDOS':1,'APELLIDO':1,'NOMBRE Y APELLIDO':1,
-    'FECHA DE NACIMIENTO':1,'NACIMIENTO':1,'FECHA NACIMIENTO':1,
-    'DEPARTAMENTO':1,'DEPTO':1,'DISTRITO':1,'CIUDAD':1,'BARRIO':1,
-    'SECCIONAL':1,'SECCION':1,'LOCAL':1,'MESA':1,'ORDEN':1,
-    'FONO':1,'TELEFONO':1,'SEXO':1,'ESTADO':1
-  };
+  var LABELS = [
+    'CEDULA DE IDENTIDAD','NUMERO DE CEDULA','NRO DE CEDULA','NRO. DE CEDULA',
+    'CEDULA','CI',
+    'NOMBRES Y APELLIDOS','NOMBRE Y APELLIDO','NOMBRES','NOMBRE','APELLIDOS','APELLIDO',
+    'FECHA DE NACIMIENTO','FECHA NACIMIENTO','NACIMIENTO',
+    'DEPARTAMENTO','DEPTO','DISTRITO','CIUDAD','BARRIO',
+    'SECCIONAL','SECCION','LOCAL','MESA','ORDEN','FONO','TELEFONO','SEXO','ESTADO'
+  ];
 
-  function isLabel(txt) { return !!LABEL_SET[norm(txt).replace(/:${'$'}/, '')]; }
+  var LABEL_SET = {};
+  LABELS.forEach(function(l){ LABEL_SET[l] = 1; });
 
-  /* ── Extractor por elemento-adyacente ───────────────────────── */
-
-  function collectLeaves() {
-    var leaves = [];
-    var walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_ELEMENT,
-      {
-        acceptNode: function(node) {
-          if (node.offsetWidth === 0 && node.offsetHeight === 0) return NodeFilter.FILTER_SKIP;
-          var tag = node.tagName;
-          if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'INPUT' ||
-              tag === 'BUTTON' || tag === 'TEXTAREA') return NodeFilter.FILTER_SKIP;
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      }
-    );
-    var node;
-    while ((node = walker.nextNode())) {
-      // Only collect elements whose direct text content is meaningful
-      var direct = '';
-      for (var i = 0; i < node.childNodes.length; i++) {
-        if (node.childNodes[i].nodeType === 3) direct += node.childNodes[i].nodeValue;
-      }
-      direct = direct.trim();
-      if (direct.length > 0 && direct.length < 300) leaves.push({el: node, txt: direct});
-    }
-    return leaves;
+  function isLabel(raw) {
+    var k = norm(raw).replace(/:${'$'}/, '').trim();
+    return !!LABEL_SET[k];
+  }
+  function normalLabel(raw) {
+    return norm(raw).replace(/:${'$'}/, '').trim();
   }
 
-  function extractResults() {
+  /* ── Extractor principal: innerText por líneas ──────────────── */
+
+  function extractFromLines() {
+    var bodyText = document.body.innerText || '';
+    var lines = bodyText.split(/[\n\r]+/).map(function(l){ return l.trim(); })
+                        .filter(function(l){ return l.length > 0 && l.length < 250; });
     var found = [];
-    var body  = document.body;
+    var i = 0;
+    while (i < lines.length) {
+      var raw = lines[i];
+      if (isLabel(raw)) {
+        var k = normalLabel(raw);
+        // buscar valor en las próximas líneas (hasta 3)
+        var pushed = false;
+        for (var j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+          var v = lines[j].trim();
+          if (v.length > 0 && !isLabel(v)) {
+            found.push([k, v]);
+            i = j + 1;
+            pushed = true;
+            break;
+          }
+        }
+        if (!pushed) i++;
+      } else {
+        // Patrón "LABEL: valor" en la misma línea
+        var ci = raw.indexOf(':');
+        if (ci > 0 && ci < 60) {
+          var kk = raw.substring(0, ci).trim();
+          var vv = raw.substring(ci + 1).trim();
+          if (isLabel(kk) && vv.length > 0 && vv.length < 200) {
+            found.push([normalLabel(kk), vv]);
+          }
+        }
+        i++;
+      }
+    }
+    return dedup(found);
+  }
 
-    // --- 1. Tablas (k/v en celdas de la misma fila) ---
-    body.querySelectorAll('table tr').forEach(function(row) {
+  /* ── Extractor secundario: tablas (solo si contiene etiquetas conocidas) ── */
+
+  function extractFromTables() {
+    var found = [];
+    document.body.querySelectorAll('table tr').forEach(function(row) {
       var cells = row.querySelectorAll('td,th');
       if (cells.length >= 2) {
         var k = cells[0].innerText.trim().replace(/:${'$'}/, '').trim();
         var v = cells[1].innerText.trim();
-        if (k && v && k !== v && k.length < 80 && v.length < 300)
-          found.push([k, v]);
+        if (isLabel(k) && v && v.length < 300 && v !== k)
+          found.push([normalLabel(k), v]);
       }
     });
-    if (found.length >= 2) return dedup(found);
-
-    // --- 2. dl/dt/dd ---
-    body.querySelectorAll('dt').forEach(function(dt) {
-      var dd = dt.nextElementSibling;
-      if (dd && dd.tagName === 'DD') found.push([dt.innerText.trim(), dd.innerText.trim()]);
-    });
-    if (found.length >= 2) return dedup(found);
-
-    // --- 3. Elemento-adyacente: etiqueta exacta → siguiente elemento = valor ---
-    var leaves = collectLeaves();
-    for (var i = 0; i < leaves.length - 1; i++) {
-      var labelTxt = leaves[i].txt.replace(/:${'$'}/, '').trim();
-      if (isLabel(labelTxt)) {
-        // Look ahead for the value (skip blank/whitespace leaves)
-        for (var j = i + 1; j < Math.min(i + 4, leaves.length); j++) {
-          var valTxt = leaves[j].txt.trim();
-          if (valTxt.length > 0 && !isLabel(valTxt)) {
-            found.push([labelTxt, valTxt]);
-            i = j; // advance past consumed value
-            break;
-          }
-        }
-      }
-    }
-    if (found.length >= 2) return dedup(found);
-
-    // --- 4. li / p con ":" en el mismo elemento ---
-    body.querySelectorAll('li, p').forEach(function(el) {
-      if (el.children.length > 2) return;
-      var txt = (el.innerText || '').trim();
-      if (txt.length < 4 || txt.length > 400) return;
-      var ci = txt.indexOf(':');
-      if (ci > 0 && ci < 70) {
-        var k = txt.substring(0, ci).trim();
-        var v = txt.substring(ci + 1).trim();
-        if (k && v && k.length < 70 && v.length < 200) found.push([k, v]);
-      }
-    });
-
     return dedup(found);
   }
 
   function dedup(arr) {
     var seen = {};
     return arr.filter(function(r) {
-      var key = norm(r[0]);
+      var key = r[0];
       if (seen[key]) return false;
       seen[key] = true;
       return true;
     });
   }
 
+  function extractResults() {
+    var fromLines  = extractFromLines();
+    var fromTables = extractFromTables();
+    // Prefer whichever has more results; tables only used if they found known labels
+    return fromLines.length >= fromTables.length ? fromLines : fromTables;
+  }
+
   function isNotFoundPage() {
     var txt = (document.body.innerText || '').toLowerCase();
     return ['no encontrado','no figura','no registr','no se encontr',
-            'sin resultados','not found','no está'].some(function(p) {
+            'sin resultados','not found','no esta'].some(function(p) {
       return txt.indexOf(p) !== -1;
     });
   }
@@ -345,7 +329,7 @@ private fun buildAnrJs(cedula: String): String {
     var attempts = 0;
     var timer = setInterval(function() {
       attempts++;
-      var data    = extractResults();
+      var data   = extractResults();
       var hasData = data.length >= 2;
       var notFnd  = isNotFoundPage();
 
