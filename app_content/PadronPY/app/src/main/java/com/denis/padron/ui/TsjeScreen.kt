@@ -42,10 +42,22 @@ fun TsjeScreen(viewModel: PadronViewModel, onBack: () -> Unit) {
     val accentRed = Color(0xFFD52B1E)
 
     Box(modifier = Modifier.fillMaxSize()
-        .background(Brush.verticalGradient(listOf(Color(0xFF0A0E1A), Color(0xFF0D1624))))) {
+        .background(
+            Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0.000f to Color(0xFF1A0505),
+                    0.333f to Color(0xFF1A0505),
+                    0.334f to Color(0xFF101520),
+                    0.666f to Color(0xFF101520),
+                    0.667f to Color(0xFF050A1A),
+                    1.000f to Color(0xFF050A1A)
+                )
+            )
+        )) {
         Canvas(Modifier.fillMaxSize()) {
-            drawCircle(Color(0x1AD52B1E), size.width*.55f, Offset(0f, size.height*.35f))
-            drawCircle(Color(0x1A002B7F), size.width*.55f, Offset(size.width, size.height*.65f))
+            drawCircle(Color(0x22D52B1E), size.width*.55f, Offset(0f, size.height*.20f))
+            drawCircle(Color(0x11FFFFFF), size.width*.45f, Offset(size.width*.5f, size.height*.5f))
+            drawCircle(Color(0x22002B7F), size.width*.55f, Offset(size.width, size.height*.80f))
         }
         Box(Modifier.fillMaxWidth().height(5.dp)
             .background(Brush.horizontalGradient(listOf(accentRed, Color.White, Color(0xFF002B7F)))))

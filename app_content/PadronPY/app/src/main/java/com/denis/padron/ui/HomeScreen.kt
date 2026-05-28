@@ -96,7 +96,14 @@ fun HomeScreen(
                     description = "Consultá tu inscripción en el padrón electoral nacional y tu local de votación",
                     icon = Icons.Default.HowToVote,
                     gradient = Brush.verticalGradient(
-                        colors = listOf(Color(0xFF8B0000), Color(0xFF002B7F))
+                        colorStops = arrayOf(
+                            0.000f to Color(0xCCD52B1E),
+                            0.333f to Color(0xCCD52B1E),
+                            0.334f to Color(0x66FFFFFF),
+                            0.666f to Color(0x66FFFFFF),
+                            0.667f to Color(0xCC002B7F),
+                            1.000f to Color(0xCC002B7F)
+                        )
                     ),
                     glowColor = Color(0x22D52B1E),
                     accentColor = Color(0xFFFFFFFF),
