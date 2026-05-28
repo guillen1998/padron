@@ -118,15 +118,35 @@ private fun AnrWebView(
                     }, "AndroidBridge")
 
                     webViewClient = object : WebViewClient() {
+
+                        private var jsInjected = false
+
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView, request: WebResourceRequest
+                        ): Boolean {
+                            val url = request.url.toString()
+                            // Block navigation away from the padron page
+                            if (!url.contains("anr.org.py")) return true
+                            if (!url.contains("padron-2026") && !url.contains("wp-admin")
+                                && !url.contains("wp-json") && !url.contains("wp-content")) {
+                                return true  // block
+                            }
+                            return false
+                        }
+
                         override fun onPageFinished(view: WebView, pageUrl: String) {
-                            // Esperar 3s para que la SPA/WordPress monte
+                            // Only inject once, and only on the voter page
+                            if (jsInjected || !pageUrl.contains("padron-2026")) return
+                            jsInjected = true
+
+                            // Wait 3s for WordPress/shortcode to fully mount
                             mainHandler.postDelayed({
                                 if (!resultHandled) {
                                     view.evaluateJavascript(buildAnrJs(cedula), null)
                                 }
                             }, 3000L)
 
-                            // Timeout de seguridad a los 70s
+                            // Safety timeout at 70s
                             mainHandler.postDelayed({
                                 if (!resultHandled) {
                                     resultHandled = true
@@ -200,9 +220,9 @@ private fun buildAnrJs(cedula: String): String {
     'RESULTADO DE LA CONSULTA':1
   };
 
-  /* ── Find consultar button by exact text (avoids icon-search) ─ */
+  /* ── Find consultar button — NO <a> tags to avoid page navigation ─ */
   function findConsultarButton() {
-    var btns = Array.from(document.querySelectorAll('button, input[type=submit], input[type=button], a'));
+    var btns = Array.from(document.querySelectorAll('button, input[type=submit], input[type=button]'));
     // First: exact-match "consultar"
     for (var i = 0; i < btns.length; i++) {
       var b = btns[i];

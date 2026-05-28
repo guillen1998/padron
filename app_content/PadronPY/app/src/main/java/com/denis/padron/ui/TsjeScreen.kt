@@ -121,7 +121,7 @@ private fun TsjeForm(
             OutlinedTextField(
                 value=cedula,
                 onValueChange={ if(it.length<=12) onCedulaChange(it.filter(Char::isDigit)) },
-                label={ Text("Número de Cédula") }, placeholder={ Text("Ej: 4356137") },
+                label={ Text("Número de Cédula") }, placeholder={ Text("Ej: 1234567") },
                 leadingIcon={ Icon(Icons.Default.Search, null, tint=accentColor) },
                 keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number, imeAction=ImeAction.Next),
                 singleLine=true, modifier=Modifier.fillMaxWidth(),
