@@ -209,19 +209,33 @@ private fun buildAnrJs(cedula: String): String {
   /* ── Find consultar button — NO <a> tags to avoid page navigation ─ */
   function findConsultarButton() {
     var btns = Array.from(document.querySelectorAll('button, input[type=submit], input[type=button]'));
-    // First: exact-match "consultar"
+    // Pass 1: exact "consultar"
     for (var i = 0; i < btns.length; i++) {
-      var b = btns[i];
-      if (b.disabled) continue;
+      var b = btns[i]; if (b.disabled) continue;
       var t = (b.textContent || b.value || '').trim().toLowerCase();
       if (t === 'consultar') return b;
     }
-    // Second: contains "consultar" anywhere
+    // Pass 2: contains "consultar"
     for (var i = 0; i < btns.length; i++) {
-      var b = btns[i];
-      if (b.disabled) continue;
+      var b = btns[i]; if (b.disabled) continue;
       var t = (b.textContent || b.value || '').trim().toLowerCase();
-      if (/\bconsultar\b/.test(t) && !/aplicaci/i.test(t)) return b;
+      if (t.indexOf('consultar') !== -1) return b;
+    }
+    // Pass 3: any submit button inside a form that has a text input
+    var forms = Array.from(document.querySelectorAll('form'));
+    for (var fi = 0; fi < forms.length; fi++) {
+      var f = forms[fi];
+      var hasText = Array.from(f.querySelectorAll('input')).some(function(i){
+        return i.type !== 'hidden' && i.type !== 'checkbox' && i.type !== 'radio' &&
+               i.type !== 'submit' && i.type !== 'button';
+      });
+      if (!hasText) continue;
+      var sb = f.querySelector('button[type=submit], button:not([type]), input[type=submit]');
+      if (sb && !sb.disabled) return sb;
+    }
+    // Pass 4: last resort — any visible submit button
+    for (var i = btns.length - 1; i >= 0; i--) {
+      if (!btns[i].disabled && btns[i].offsetWidth > 0) return btns[i];
     }
     return null;
   }
@@ -230,15 +244,19 @@ private fun buildAnrJs(cedula: String): String {
   function findCedulaInput(scope) {
     var root = scope || document;
     var inputs = Array.from(root.querySelectorAll('input'));
+    // First pass: skip only the WordPress native search (name exactly "s")
     for (var i = 0; i < inputs.length; i++) {
       var inp = inputs[i];
       if (inp.type === 'hidden' || inp.type === 'checkbox' || inp.type === 'radio' ||
           inp.type === 'submit' || inp.type === 'button' || inp.disabled) continue;
-      var name = (inp.name || '').toLowerCase();
-      var id   = (inp.id   || '').toLowerCase();
-      var ph   = (inp.placeholder || '').toLowerCase();
-      // Skip WordPress site search
-      if (name === 's' || id === 's' || /search/.test(name + id) || /buscar.*sitio/.test(ph)) continue;
+      if ((inp.name || '') === 's') continue;  // WordPress native search only
+      return inp;
+    }
+    // Fallback: absolutely first usable input, no restrictions
+    for (var i = 0; i < inputs.length; i++) {
+      var inp = inputs[i];
+      if (inp.type === 'hidden' || inp.type === 'checkbox' || inp.type === 'radio' ||
+          inp.type === 'submit' || inp.type === 'button' || inp.disabled) continue;
       return inp;
     }
     return null;
