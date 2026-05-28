@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Dark background circle -->
+    <path android:fillColor="#0A0E1A"
+        android:pathData="M54,54m-54,0a54,54 0 1,0 108,0a54,54 0 1,0 -108,0"/>
+
+    <!-- Ballot paper (white slip going into box) -->
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.95"
+        android:pathData="M 44,10 L 64,10 Q 66,10 66,12 L 66,36 L 42,36 L 42,12 Q 42,10 44,10 Z"/>
+    <!-- Lines on the paper -->
+    <path android:strokeColor="#002B7F" android:strokeWidth="2"
+        android:strokeLineCap="round" android:fillColor="@android:color/transparent"
+        android:pathData="M 47,17 L 61,17 M 47,22 L 61,22"/>
+    <!-- Check mark on paper -->
+    <path android:strokeColor="#D52B1E" android:strokeWidth="2.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M 47,28 L 51,33 L 61,22"/>
+
+    <!-- Ballot box slot (dark opening) -->
+    <path android:fillColor="#0A0E1A"
+        android:pathData="M 42,35 L 66,35 L 66,40 L 42,40 Z"/>
+
+    <!-- Ballot box body — Red stripe (top) -->
+    <path android:fillColor="#D52B1E"
+        android:pathData="M 20,40 Q 20,38 22,38 L 86,38 Q 88,38 88,40 L 88,60 L 20,60 Z"/>
+    <!-- White stripe (middle) -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M 20,60 L 88,60 L 88,72 L 20,72 Z"/>
+    <!-- Blue stripe (bottom) -->
+    <path android:fillColor="#002B7F"
+        android:pathData="M 20,72 L 88,72 L 88,90 Q 88,94 84,94 L 24,94 Q 20,94 20,90 Z"/>
+
+    <!-- Box outline -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="2"
+        android:strokeAlpha="0.7" android:fillColor="@android:color/transparent"
+        android:pathData="M 20,40 Q 20,38 22,38 L 86,38 Q 88,38 88,40 L 88,90 Q 88,94 84,94 L 24,94 Q 20,94 20,90 Z"/>
+
+    <!-- Small star on white stripe -->
+    <path android:fillColor="#D52B1E"
+        android:pathData="M 54,63 L 55.5,68 L 61,68 L 56.5,71 L 58,76 L 54,73 L 50,76 L 51.5,71 L 47,68 L 52.5,68 Z"/>
+
+</vector>
