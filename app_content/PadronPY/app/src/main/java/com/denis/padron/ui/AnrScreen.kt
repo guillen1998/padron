@@ -103,7 +103,17 @@ private fun AnrWebView(
                         "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
                         "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
+                    android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+
                     var resultHandled = false
+
+                    // Global safety timeout: fires if JS never calls sendResult
+                    mainHandler.postDelayed({
+                        if (!resultHandled) {
+                            resultHandled = true
+                            onNotFound("Tiempo agotado. Verificá tu conexión e intentá de nuevo.")
+                        }
+                    }, 90000L)
 
                     addJavascriptInterface(object {
                         @JavascriptInterface
@@ -119,40 +129,16 @@ private fun AnrWebView(
 
                     webViewClient = object : WebViewClient() {
 
-                        private var jsInjected = false
-
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView, request: WebResourceRequest
-                        ): Boolean {
-                            val url = request.url.toString()
-                            // Block navigation away from the padron page
-                            if (!url.contains("anr.org.py")) return true
-                            if (!url.contains("padron-2026") && !url.contains("wp-admin")
-                                && !url.contains("wp-json") && !url.contains("wp-content")) {
-                                return true  // block
-                            }
-                            return false
-                        }
-
                         override fun onPageFinished(view: WebView, pageUrl: String) {
-                            // Only inject once, and only on the voter page
-                            if (jsInjected || !pageUrl.contains("padron-2026")) return
-                            jsInjected = true
+                            if (resultHandled) return
+                            if (!pageUrl.contains("anr.org.py")) return
 
-                            // Wait 3s for WordPress/shortcode to fully mount
+                            // 8s: lets Cloudflare JS challenge complete + WordPress mount
                             mainHandler.postDelayed({
                                 if (!resultHandled) {
                                     view.evaluateJavascript(buildAnrJs(cedula), null)
                                 }
-                            }, 3000L)
-
-                            // Safety timeout at 70s
-                            mainHandler.postDelayed({
-                                if (!resultHandled) {
-                                    resultHandled = true
-                                    onNotFound("Tiempo agotado. Verificá tu conexión e intentá de nuevo.")
-                                }
-                            }, 70000L)
+                            }, 8000L)
                         }
 
                         override fun onReceivedError(
