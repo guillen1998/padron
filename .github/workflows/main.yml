@@ -2,7 +2,7 @@ name: Build PadronPY
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "claude/elegant-galileo-mKLED" ]
   workflow_dispatch:
 
 jobs:
